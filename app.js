@@ -16,13 +16,15 @@ const stateUpload = document.getElementById('state-upload');
 let romBuffer = null;
 let isPlaying = false;
 let animationFrameId = null;
-let currentSystem = null; // 'NES' or 'GB'
-let nes = null; // Initialized dynamically later
+let currentSystem = null; // 'NES', 'GB', or 'GBA'
+
+// Engine references initialized dynamically on demand
+let nes = null; 
+let gba = null; 
 
 // ==========================================
 // 2. DYNAMIC CORE LOADER (NO BACKEND REQUIRED)
 // ==========================================
-// This helper function injects scripts into the page on demand
 function injectCoreScript(url) {
     return new Promise((resolve, reject) => {
         if (document.querySelector(`script[src="${url}"]`)) {
@@ -89,10 +91,8 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 240;
             canvas.style.aspectRatio = "256 / 240";
             
-            // Fetch the NES engine dynamically from the web
             await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/jsnes/1.2.1/jsnes.min.js');
             
-            // Initialize JSNES if it hasn't been set up yet
             if (!nes) {
                 nes = new jsnes.NES({
                     sampleRate: 44100,
@@ -119,11 +119,23 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 144;
             canvas.style.aspectRatio = "160 / 144";
             
-            // Fetch the Game Boy engine dynamically from the web
             await injectCoreScript('https://unpkg.com/wasmboy@0.5.1/dist/wasmboy.wasm.js');
             
             if (window.WasmBoy) {
                 WasmBoy.config({ autostart: false, isAudioEnabled: true, enableDynamicSpeed: true });
+            }
+        } else if (extension === 'gba') {
+            currentSystem = 'GBA';
+            canvas.width = 240;
+            canvas.height = 160;
+            canvas.style.aspectRatio = "240 / 160";
+            
+            // Fetch the heavy 32-bit GBA hardware simulator engine core
+            await injectCoreScript('https://cdn.jsdelivr.net/npm/gbajs@1.1.2/js/gba.min.js');
+            
+            if (!gba && window.GameBoyAdvance) {
+                gba = new GameBoyAdvance();
+                gba.setCanvas(canvas);
             }
         } else {
             alert("Unsupported console file type!");
@@ -131,7 +143,7 @@ romUpload.addEventListener('change', async (event) => {
             return;
         }
 
-        // Read the actual game file data
+        // Load file into cache buffer arrays
         const reader = new FileReader();
         reader.onload = function(e) {
             romBuffer = e.target.result;
@@ -140,8 +152,8 @@ romUpload.addEventListener('change', async (event) => {
             btnPlay.disabled = false;
             btnPause.disabled = false;
             btnReset.disabled = false;
-            btnSave.disabled = false;
-            btnLoad.disabled = false;
+            btnSave.disabled = (currentSystem === 'GBA'); // GBA.js handles native battery saves directly
+            btnLoad.disabled = (currentSystem === 'GBA');
         };
         reader.readAsArrayBuffer(file);
 
@@ -189,6 +201,16 @@ mappingList.addEventListener('click', (e) => {
 
 btnCloseModal.addEventListener('click', () => { mappingModal.classList.add('hidden'); activeRemapButton = null; });
 
+// Helper to seamlessly forward frontend keystrokes into the active GBA runtime engine
+function passInputToGBA(buttonName, isPressed) {
+    if (!gba || !gba.keypad) return;
+    const keyId = gba.keypad[buttonName.toUpperCase()];
+    if (keyId !== undefined) {
+        if (isPressed) gba.keypad.keydown(keyId);
+        else gba.keypad.keyup(keyId);
+    }
+}
+
 window.addEventListener('keydown', (event) => {
     if (activeRemapButton) {
         event.preventDefault();
@@ -206,13 +228,19 @@ window.addEventListener('keydown', (event) => {
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 1;
         event.preventDefault(); 
+        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], true);
     }
 });
 
-window.addEventListener('keyup', (event) => { if (keyMap[event.key] !== undefined) controllerState[keyMap[event.key]] = 0; });
+window.addEventListener('keyup', (event) => { 
+    if (keyMap[event.key] !== undefined) {
+        controllerState[keyMap[event.key]] = 0;
+        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], false);
+    }
+});
 
 // ==========================================
-// 6. HEARTBEAT FRAME LOOP
+// 6. HEARTBEAT FRAME LOOP (NES & GB ONLY)
 // ==========================================
 function emulateFrame() {
     if (!isPlaying) return;
@@ -236,7 +264,10 @@ function emulateFrame() {
         });
     }
 
-    animationFrameId = requestAnimationFrame(emulateFrame);
+    // Note: GBA handles its own internally scheduled rendering clock loops automatically!
+    if (currentSystem !== 'GBA') {
+        animationFrameId = requestAnimationFrame(emulateFrame);
+    }
 }
 
 // ==========================================
@@ -262,21 +293,29 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
+        } else if (currentSystem === 'GBA' && gba) {
+            // Flash the GBA buffer directly down into GBA.js virtual RAM
+            gba.setRom(romBuffer);
+            gba.run();
         }
-        console.log(`${currentSystem} core activated.`);
+        console.log(`${currentSystem} core active.`);
     }
 });
 
 btnPause.addEventListener('click', () => {
     isPlaying = false;
-    cancelAnimationFrame(animationFrameId);
-    if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
+    if (currentSystem === 'GBA' && gba) gba.pause();
+    else {
+        cancelAnimationFrame(animationFrameId);
+        if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
+    }
     console.log("Execution paused.");
 });
 
 btnReset.addEventListener('click', () => {
     if (currentSystem === 'NES' && nes && nes.rom) nes.reloadROM();
     if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.reset();
+    if (currentSystem === 'GBA' && gba) gba.reset();
 });
 
 // ==========================================
