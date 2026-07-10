@@ -217,6 +217,7 @@ function passInputToGBA(buttonName, isPressed) {
 }
 
 window.addEventListener('keydown', (event) => {
+    if (currentSystem === 'GBA') return; // Let Nostalgist run inputs natively!
     if (activeRemapButton) {
         event.preventDefault();
         const gameButtonToAssign = activeRemapButton.getAttribute('data-button');
@@ -238,6 +239,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => { 
+    if (currentSystem === 'GBA') return;
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 0;
         if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], false);
@@ -298,29 +300,38 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
-        } else if (currentSystem === 'GBA' && gba) {
-            // Flash the GBA buffer directly down into GBA.js virtual RAM
-            gba.setRom(romBuffer);
-            gba.run();
+        } else if (currentSystem === 'GBA' && window.Nostalgist) {
+            if (!gba) {
+                const romBlob = new Blob([romBuffer]);
+                // Launch the industry-standard mGBA engine directly into your canvas
+                gba = await Nostalgist.launch({
+                    core: 'mgba',
+                    rom: romBlob,
+                    element: canvas
+                });
+            } else {
+                await gba.resume();
+            }
         }
         console.log(`${currentSystem} core active.`);
     }
 });
 
-btnPause.addEventListener('click', () => {
+btnPause.addEventListener('click', async () => {
     isPlaying = false;
-    if (currentSystem === 'GBA' && gba) gba.pause();
-    else {
+    if (currentSystem === 'GBA' && gba) {
+        await gba.pause();
+    } else {
         cancelAnimationFrame(animationFrameId);
         if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
     }
     console.log("Execution paused.");
 });
 
-btnReset.addEventListener('click', () => {
+btnReset.addEventListener('click', async () => {
     if (currentSystem === 'NES' && nes && nes.rom) nes.reloadROM();
     if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.reset();
-    if (currentSystem === 'GBA' && gba) gba.reset();
+    if (currentSystem === 'GBA' && gba) await gba.restart();
 });
 
 // ==========================================
