@@ -130,24 +130,15 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Switching to a trusted Cloudflare mirror for the GBA engine core
-            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA/core/Cartridge.js');
-            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA/core/GBA.js');
+            // Patched flat-dependency single script build via unpkg
+            await injectCoreScript('https://unpkg.com/bionicle-gba@1.0.0/core.js');
             
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                romBuffer = e.target.result;
-                romName.textContent = `Ready to Play: ${file.name}`;
-                
-                btnPlay.disabled = false;
-                btnPause.disabled = false;
-                btnReset.disabled = false;
-                btnSave.disabled = true; 
-                btnLoad.disabled = true;
-            };
-            reader.readAsArrayBuffer(file);
-            return;
+            if (!gba && window.GameBoyAdvance) {
+                gba = new GameBoyAdvance();
+                gba.setCanvas(canvas);
+            }
         }
+
         // Read the uploaded game file data
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -163,7 +154,6 @@ romUpload.addEventListener('change', async (event) => {
         reader.readAsArrayBuffer(file);
 
     } catch (error) {
-        // ON-SCREEN REPORTER: This alert will pop up and tell us the exact URL or file causing the break
         alert(`EMULATOR ENGINE ERROR:\n${error.message}\n\nPlease copy this message and tell me what it says!`);
         romName.textContent = "Failed to load core.";
     }
@@ -299,18 +289,20 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
-        } else if (currentSystem === 'GBA') {
+        } else if (currentSystem === 'GBA' && gba) {
             try {
-                if (!gba && window.IodineGBA) {
-                    gba = new IodineGBA();
-                    gba.setCanvas(canvas);
-                }
+                romName.textContent = "Booting Game...";
                 
-                if (gba) {
-                    // Inject the array buffer directly into the virtual system
-                    gba.loadRom(new Uint8Array(romBuffer));
-                    gba.play();
-                }
+                // Load the rom using the classic callback system
+                gba.loadRom(romBuffer, function(err) {
+                    if (err) {
+                        alert("Failed to load ROM into memory core.");
+                        isPlaying = false;
+                        return;
+                    }
+                    gba.run();
+                    romName.textContent = "GBA Game Running!";
+                });
             } catch (err) {
                 isPlaying = false;
                 alert(`GBA Boot Error: ${err.message}`);
