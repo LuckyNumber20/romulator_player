@@ -18,17 +18,16 @@ let isPlaying = false;
 let animationFrameId = null;
 let currentSystem = null; // 'NES', 'GB', or 'GBA'
 
-// Engine references initialized dynamically on demand
 let nes = null; 
 let gba = null; 
 
 // ==========================================
-// 2. DYNAMIC CORE LOADER (NO BACKEND REQUIRED)
+// 2. DYNAMIC CORE LOADER
 // ==========================================
 function injectCoreScript(url) {
     return new Promise((resolve, reject) => {
         if (document.querySelector(`script[src="${url}"]`)) {
-            resolve(); // Core is already loaded!
+            resolve();
             return;
         }
         const script = document.createElement('script');
@@ -40,7 +39,7 @@ function injectCoreScript(url) {
 }
 
 // ==========================================
-// 3. AUDIO ENGINE SETUP (WEB AUDIO API)
+// 3. AUDIO ENGINE SETUP
 // ==========================================
 let audioCtx = null;
 let scriptProcessor = null;
@@ -130,42 +129,10 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // LOCAL FALLBACK VIRTUAL SYSTEM: Runs locally without network dependencies
-            if (!gba) {
-                gba = {
-                    romData: null,
-                    frame: 0,
-                    loadRom: function(buffer) { this.romData = new Uint8Array(buffer); },
-                    play: function() {
-                        if(!this.romData) return;
-                        ctx.fillStyle = "#111116";
-                        ctx.fillRect(0, 0, 240, 160);
-                        ctx.fillStyle = "#00ffcc";
-                        ctx.font = "12px monospace";
-                        ctx.fillText("GBA Core Active (Offline Mode)", 20, 50);
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillText("Processing ARM7TDMI Instructions...", 20, 80);
-                        this.loop();
-                    },
-                    pause: function() { console.log("GBA Engine Interrupted"); },
-                    restart: function() { this.play(); },
-                    loop: function() {
-                        if (!isPlaying || currentSystem !== 'GBA') return;
-                        gba.frame++;
-                        // Fast local render canvas loop configuration
-                        if (gba.frame % 60 === 0) {
-                            ctx.fillStyle = "#111116";
-                            ctx.fillRect(20, 100, 200, 20);
-                            ctx.fillStyle = "#a1a1aa";
-                            ctx.fillText(`System Run Time: ${(gba.frame/60).toFixed(0)}s`, 20, 115);
-                        }
-                        animationFrameId = requestAnimationFrame(() => gba.loop());
-                    }
-                };
-            }
+            // Loading a verified full-production standalone single script bundle
+            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA.min.js');
         }
 
-        // Process file buffer assembly arrays safely
         const reader = new FileReader();
         reader.onload = function(e) {
             romBuffer = e.target.result;
@@ -223,6 +190,16 @@ mappingList.addEventListener('click', (e) => {
 
 btnCloseModal.addEventListener('click', () => { mappingModal.classList.add('hidden'); activeRemapButton = null; });
 
+function passInputToGBA(buttonName, isPressed) {
+    if (!gba) return;
+    const keys = { 'A': 0, 'B': 1, 'Select': 2, 'Start': 3, 'Right': 4, 'Left': 5, 'Up': 6, 'Down': 7 };
+    const keyId = keys[buttonName];
+    if (keyId !== undefined) {
+        if (isPressed) gba.keyDown(keyId);
+        else gba.keyUp(keyId);
+    }
+}
+
 window.addEventListener('keydown', (event) => {
     if (activeRemapButton) {
         event.preventDefault();
@@ -240,12 +217,14 @@ window.addEventListener('keydown', (event) => {
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 1;
         event.preventDefault(); 
+        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], true);
     }
 });
 
 window.addEventListener('keyup', (event) => { 
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 0;
+        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], false);
     }
 });
 
@@ -302,11 +281,35 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
-        } else if (currentSystem === 'GBA' && gba) {
-            romName.textContent = "Booting Game...";
-            gba.loadRom(romBuffer);
-            gba.play();
-            romName.textContent = "GBA Game Running!";
+        } else if (currentSystem === 'GBA' && window.IodineGBA) {
+            try {
+                if (!gba) {
+                    romName.textContent = "Booting Game Core...";
+                    gba = new window.IodineGBA();
+                    
+                    // Route drawing context frames
+                    gba.onVBlank = function(buffer) {
+                        const imageData = ctx.createImageData(240, 160);
+                        const data = imageData.data;
+                        for (let i = 0; i < 240 * 160; i++) {
+                            const pixel = buffer[i];
+                            const index = i * 4;
+                            data[index]     = (pixel >> 16) & 0xff;
+                            data[index + 1] = (pixel >> 8) & 0xff;
+                            data[index + 2] = pixel & 0xff;
+                            data[index + 3] = 0xff;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                    };
+                    
+                    gba.setRom(new Uint8Array(romBuffer));
+                }
+                gba.play();
+                romName.textContent = "GBA Game Running!";
+            } catch (err) {
+                isPlaying = false;
+                alert(`GBA Boot Error: ${err.message}`);
+            }
         }
         console.log(`${currentSystem} core active.`);
     }
