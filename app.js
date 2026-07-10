@@ -43,14 +43,12 @@ btnPause.addEventListener('click', () => {
 btnReset.addEventListener('click', () => {
     console.log("Resetting system state.");
 });
-// --- CONTROLLER MAPPING LOGIC ---
 
-// This object holds the live state of our virtual controller (0 = released, 1 = pressed)
 // --- DYNAMIC CONTROLLER MAPPING LOGIC ---
 
 const controllerState = { Up: 0, Down: 0, Left: 0, Right: 0, A: 0, B: 0, Start: 0, Select: 0 };
 
-// We change this to 'let' so we can modify it when remapping keys
+// We use 'let' so we can modify it when remapping keys dynamically
 let keyMap = {
     'ArrowUp': 'Up',
     'ArrowDown': 'Down',
@@ -111,7 +109,7 @@ btnCloseModal.addEventListener('click', () => {
     activeRemapButton = null;
 });
 
-// Modify the window keydown listener to ALSO handle remapping keys
+// Listen for keyboard buttons pressed down
 window.addEventListener('keydown', (event) => {
     // IF we are actively listening to remap a key:
     if (activeRemapButton) {
@@ -148,47 +146,11 @@ window.addEventListener('keydown', (event) => {
     }
 });
 
+// Listen for keyboard buttons released
 window.addEventListener('keyup', (event) => {
     if (keyMap[event.key] !== undefined) {
         const button = keyMap[event.key];
         controllerState[button] = 0;
-        console.log(`Released: ${button}`);
-    }
-});
-
-// Map keyboard keys to our virtual controller buttons
-const keyMap = {
-    'ArrowUp': 'Up',
-    'ArrowDown': 'Down',
-    'ArrowLeft': 'Left',
-    'ArrowRight': 'Right',
-    'z': 'A',
-    'Z': 'A', // Handle caps lock
-    'x': 'B',
-    'X': 'B',
-    'Enter': 'Start',
-    'Shift': 'Select'
-};
-
-// Listen for when a key is pressed down
-window.addEventListener('keydown', (event) => {
-    if (keyMap[event.key] !== undefined) {
-        const button = keyMap[event.key];
-        controllerState[button] = 1; // Mark button as pressed
-        
-        // Prevent the browser from scrolling down when pressing the Arrow Keys or Space
-        event.preventDefault(); 
-        
-        console.log(`Pressed: ${button}`, controllerState);
-    }
-});
-
-// Listen for when a key is released
-window.addEventListener('keyup', (event) => {
-    if (keyMap[event.key] !== undefined) {
-        const button = keyMap[event.key];
-        controllerState[button] = 0; // Mark button as released
-        
         console.log(`Released: ${button}`);
     }
 });
