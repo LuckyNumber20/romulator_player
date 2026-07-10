@@ -22,15 +22,51 @@ let currentSystem = null; // Tracked as 'NES' or 'GB'
 // 2. AUDIO ENGINE SETUP (WEB AUDIO API)
 // ==========================================
 let audioCtx = null;
+let scriptProcessor = null;
 let audioBufferQueue = [];
 
 function initAudio() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+    if (audioCtx) return; // Already running
+    
+    // Create the main browser audio environment
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+    
+    // Create a script processor node to stream raw emulator sound samples directly to speakers
+    // 2048 buffer size, 0 input channels, 2 output channels (Stereo)
+    scriptProcessor = audioCtx.createScriptProcessor(2048, 0, 2);
+    
+    scriptProcessor.onaudioprocess = function(e) {
+        const outputLeft = e.outputBuffer.getChannelData(0);
+        const outputRight = e.outputBuffer.getChannelData(1);
+        
+        // Fill the audio channels with samples from our emulator queue
+        for (let i = 0; i < 2048; i++) {
+            if (audioBufferQueue.length > 0) {
+                const sample = audioBufferQueue.shift();
+                outputLeft[i] = sample.left;
+                outputRight[i] = sample.right;
+            } else {
+                // If queue is empty, play silence instead of cracking/popping noises
+                outputLeft[i] = 0;
+                outputRight[i] = 0;
+            }
+        }
+    };
+    
+    // Connect the audio processor to your device's speakers
+    scriptProcessor.connect(audioCtx.destination);
+}
+
+// Queue audio samples coming out of the emulator engines
+function playAudioSample(left, right) {
+    if (!audioCtx || !isPlaying) return;
+    
+    // Prevent the audio queue from growing infinitely and causing huge lag
+    if (audioBufferQueue.length > 8192) {
+        audioBufferQueue = []; // Clear overflow
     }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    
+    audioBufferQueue.push({ left: left, right: right });
 }
 
 // Queue audio samples to prevent popping sounds
