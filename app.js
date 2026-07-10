@@ -130,8 +130,9 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Loads a guaranteed, working single-file distribution bundle of Nostalgist
-            await injectCoreScript('https://unpkg.com/nostalgist/dist/nostalgist.umd.js');
+            // Switching to a trusted Cloudflare mirror for the GBA engine core
+            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA/core/Cartridge.js');
+            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA/core/GBA.js');
             
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -141,11 +142,11 @@ romUpload.addEventListener('change', async (event) => {
                 btnPlay.disabled = false;
                 btnPause.disabled = false;
                 btnReset.disabled = false;
-                btnSave.disabled = false; // Enabled! Nostalgist supports saves perfectly!
-                btnLoad.disabled = false;
+                btnSave.disabled = true; 
+                btnLoad.disabled = true;
             };
             reader.readAsArrayBuffer(file);
-            return; // Exit early since we handle the reader locally here
+            return;
         }
         // Read the uploaded game file data
         const reader = new FileReader();
@@ -217,7 +218,6 @@ function passInputToGBA(buttonName, isPressed) {
 }
 
 window.addEventListener('keydown', (event) => {
-    if (currentSystem === 'GBA') return; // Let Nostalgist run inputs natively!
     if (activeRemapButton) {
         event.preventDefault();
         const gameButtonToAssign = activeRemapButton.getAttribute('data-button');
@@ -239,7 +239,6 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => { 
-    if (currentSystem === 'GBA') return;
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 0;
         if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], false);
@@ -300,41 +299,31 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
-        } else if (currentSystem === 'GBA' && window.Nostalgist) {
+        } else if (currentSystem === 'GBA') {
             try {
-                if (!gba) {
-                    romName.textContent = "Booting up 32-bit mGBA Core...";
-                    const romBlob = new Blob([romBuffer]);
-                    
-                    gba = await Nostalgist.launch({
-                        core: 'mgba',
-                        rom: romBlob,
-                        element: canvas,
-                        // FORCE UNPKG: This tells Nostalgist to completely bypass jsdelivr 
-                        // for its internal background engine and webassembly assets!
-                        resolveCoreSource(core, ext) {
-                            return `https://unpkg.com/@nostalgist/cores/${core}_libretro.${ext}`;
-                        }
-                    });
-                    
-                    romName.textContent = "GBA Engine Active!";
-                } else {
-                    await gba.resume();
+                if (!gba && window.IodineGBA) {
+                    gba = new IodineGBA();
+                    gba.setCanvas(canvas);
+                }
+                
+                if (gba) {
+                    // Inject the array buffer directly into the virtual system
+                    gba.loadRom(new Uint8Array(romBuffer));
+                    gba.play();
                 }
             } catch (err) {
                 isPlaying = false;
-                alert(`🚨 GBA ENGINE FAILURE:\n${err.message}\n\nYour device or network configuration might be preventing WebAssembly applications from compiling.`);
-                romName.textContent = "Engine crashed.";
+                alert(`GBA Boot Error: ${err.message}`);
             }
         }
         console.log(`${currentSystem} core active.`);
     }
 });
 
-btnPause.addEventListener('click', async () => {
+btnPause.addEventListener('click', () => {
     isPlaying = false;
     if (currentSystem === 'GBA' && gba) {
-        await gba.pause();
+        gba.pause();
     } else {
         cancelAnimationFrame(animationFrameId);
         if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
@@ -342,10 +331,10 @@ btnPause.addEventListener('click', async () => {
     console.log("Execution paused.");
 });
 
-btnReset.addEventListener('click', async () => {
+btnReset.addEventListener('click', () => {
     if (currentSystem === 'NES' && nes && nes.rom) nes.reloadROM();
     if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.reset();
-    if (currentSystem === 'GBA' && gba) await gba.restart();
+    if (currentSystem === 'GBA' && gba) gba.restart();
 });
 
 // ==========================================
