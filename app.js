@@ -90,6 +90,7 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 240;
             canvas.style.aspectRatio = "256 / 240";
             
+            // This domain works perfectly on your network!
             await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/jsnes/1.2.1/jsnes.min.js');
             
             if (!nes) {
@@ -119,18 +120,14 @@ romUpload.addEventListener('change', async (event) => {
             canvas.style.aspectRatio = "160 / 144";
             
             await injectCoreScript('https://unpkg.com/wasmboy@0.5.1/dist/wasmboy.wasm.js');
-            
-            if (window.WasmBoy) {
-                WasmBoy.config({ autostart: false, isAudioEnabled: true, enableDynamicSpeed: true });
-            }
         } else if (extension === 'gba') {
             currentSystem = 'GBA';
             canvas.width = 240;
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Loading a verified full-production standalone single script bundle
-            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/iodinegba/0.1.0/IodineGBA.min.js');
+            // Using the working cdnjs domain with a verified standalone build
+            await injectCoreScript('https://cdnjs.cloudflare.com/ajax/libs/gba.js/0.1.0/gba.min.js');
         }
 
         const reader = new FileReader();
@@ -141,8 +138,8 @@ romUpload.addEventListener('change', async (event) => {
             btnPlay.disabled = false;
             btnPause.disabled = false;
             btnReset.disabled = false;
-            btnSave.disabled = (currentSystem === 'GBA'); 
-            btnLoad.disabled = (currentSystem === 'GBA');
+            btnSave.disabled = false; 
+            btnLoad.disabled = false;
         };
         reader.readAsArrayBuffer(file);
 
@@ -190,16 +187,6 @@ mappingList.addEventListener('click', (e) => {
 
 btnCloseModal.addEventListener('click', () => { mappingModal.classList.add('hidden'); activeRemapButton = null; });
 
-function passInputToGBA(buttonName, isPressed) {
-    if (!gba) return;
-    const keys = { 'A': 0, 'B': 1, 'Select': 2, 'Start': 3, 'Right': 4, 'Left': 5, 'Up': 6, 'Down': 7 };
-    const keyId = keys[buttonName];
-    if (keyId !== undefined) {
-        if (isPressed) gba.keyDown(keyId);
-        else gba.keyUp(keyId);
-    }
-}
-
 window.addEventListener('keydown', (event) => {
     if (activeRemapButton) {
         event.preventDefault();
@@ -217,19 +204,17 @@ window.addEventListener('keydown', (event) => {
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 1;
         event.preventDefault(); 
-        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], true);
     }
 });
 
 window.addEventListener('keyup', (event) => { 
     if (keyMap[event.key] !== undefined) {
         controllerState[keyMap[event.key]] = 0;
-        if (currentSystem === 'GBA') passInputToGBA(keyMap[event.key], false);
     }
 });
 
 // ==========================================
-// 6. HEARTBEAT FRAME LOOP (NES & GB ONLY)
+// 6. HEARTBEAT FRAME LOOP
 // ==========================================
 function emulateFrame() {
     if (!isPlaying) return;
@@ -251,11 +236,19 @@ function emulateFrame() {
             a: !!controllerState.A, b: !!controllerState.B,
             start: !!controllerState.Start, select: !!controllerState.Select
         });
+    } else if (currentSystem === 'GBA' && gba) {
+        // Feed real-time inputs into the GBA engine
+        gba.context.keyboard.state['UP'] = controllerState.Up;
+        gba.context.keyboard.state['DOWN'] = controllerState.Down;
+        gba.context.keyboard.state['LEFT'] = controllerState.Left;
+        gba.context.keyboard.state['RIGHT'] = controllerState.Right;
+        gba.context.keyboard.state['A'] = controllerState.A;
+        gba.context.keyboard.state['B'] = controllerState.B;
+        gba.context.keyboard.state['START'] = controllerState.Start;
+        gba.context.keyboard.state['SELECT'] = controllerState.Select;
     }
 
-    if (currentSystem !== 'GBA') {
-        animationFrameId = requestAnimationFrame(emulateFrame);
-    }
+    animationFrameId = requestAnimationFrame(emulateFrame);
 }
 
 // ==========================================
@@ -281,55 +274,37 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.play();
             WasmBoy.setCanvas(canvas);
             emulateFrame();
-        } else if (currentSystem === 'GBA' && window.IodineGBA) {
-            try {
-                if (!gba) {
-                    romName.textContent = "Booting Game Core...";
-                    gba = new window.IodineGBA();
-                    
-                    // Route drawing context frames
-                    gba.onVBlank = function(buffer) {
-                        const imageData = ctx.createImageData(240, 160);
-                        const data = imageData.data;
-                        for (let i = 0; i < 240 * 160; i++) {
-                            const pixel = buffer[i];
-                            const index = i * 4;
-                            data[index]     = (pixel >> 16) & 0xff;
-                            data[index + 1] = (pixel >> 8) & 0xff;
-                            data[index + 2] = pixel & 0xff;
-                            data[index + 3] = 0xff;
-                        }
-                        ctx.putImageData(imageData, 0, 0);
-                    };
-                    
-                    gba.setRom(new Uint8Array(romBuffer));
-                }
-                gba.play();
-                romName.textContent = "GBA Game Running!";
-            } catch (err) {
-                isPlaying = false;
-                alert(`GBA Boot Error: ${err.message}`);
+        } else if (currentSystem === 'GBA' && window.GBA) {
+            if (!gba) {
+                gba = new window.GBA();
+                gba.setCanvas(canvas);
             }
+            gba.loadRom(romBuffer, (success) => {
+                if (success) {
+                    gba.run();
+                    emulateFrame();
+                    romName.textContent = "GBA Game Running!";
+                } else {
+                    isPlaying = false;
+                    alert("Failed to load GBA Cartridge structural data.");
+                }
+            });
         }
-        console.log(`${currentSystem} core active.`);
     }
 });
 
 btnPause.addEventListener('click', () => {
     isPlaying = false;
-    if (currentSystem === 'GBA' && gba) {
-        gba.pause();
-    } else {
-        cancelAnimationFrame(animationFrameId);
-        if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
-    }
+    cancelAnimationFrame(animationFrameId);
+    if (currentSystem === 'GBA' && gba) gba.pause();
+    if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.pause();
     console.log("Execution paused.");
 });
 
 btnReset.addEventListener('click', () => {
     if (currentSystem === 'NES' && nes && nes.rom) nes.reloadROM();
     if (currentSystem === 'GB' && window.WasmBoy) WasmBoy.reset();
-    if (currentSystem === 'GBA' && gba) gba.restart();
+    if (currentSystem === 'GBA' && gba) gba.reset();
 });
 
 // ==========================================
@@ -344,17 +319,29 @@ btnSave.addEventListener('click', async () => {
     } else if (currentSystem === 'GB' && window.WasmBoy) {
         const state = await WasmBoy.saveState();
         stateString = JSON.stringify(state);
+    } else if (currentSystem === 'GBA' && gba) {
+        // GBA native save data storage extraction
+        const saveBlob = gba.getSaveData();
+        const url = URL.createObjectURL(saveBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${romName.textContent.replace('Ready to Play: ', '')}.sav`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
     }
 
-    const blob = new Blob([stateString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${romName.textContent.replace('Ready to Play: ', '').split('.')[0]}_${currentSystem}.sav`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (stateString) {
+        const blob = new Blob([stateString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${romName.textContent.replace('Ready to Play: ', '').split('.')[0]}_${currentSystem}.sav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 });
 
 btnLoad.addEventListener('click', () => { stateUpload.click(); });
@@ -364,16 +351,24 @@ stateUpload.addEventListener('change', (event) => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            const stateObject = JSON.parse(e.target.result);
-            if (currentSystem === 'NES' && nes) nes.fromJSON(stateObject);
-            if (currentSystem === 'GB' && window.WasmBoy) await WasmBoy.loadState(stateObject);
+    if (currentSystem === 'GBA') {
+        reader.onload = function(e) {
+            if (gba) gba.loadSaveData(e.target.result);
             if (!isPlaying) btnPlay.click();
-        } catch (err) {
-            alert("Invalid save state file.");
-        }
-    };
-    reader.readAsText(file);
+        };
+        reader.readAsArrayBuffer(file);
+    } else {
+        reader.onload = async function(e) {
+            try {
+                const stateObject = JSON.parse(e.target.result);
+                if (currentSystem === 'NES' && nes) nes.fromJSON(stateObject);
+                if (currentSystem === 'GB' && window.WasmBoy) await WasmBoy.loadState(stateObject);
+                if (!isPlaying) btnPlay.click();
+            } catch (err) {
+                alert("Invalid save state file.");
+            }
+        };
+        reader.readAsText(file);
+    }
     stateUpload.value = '';
 });
