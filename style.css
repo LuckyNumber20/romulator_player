@@ -1,39 +1,48 @@
+/* Reset margins and make the body take up the full screen height */
 body {
     background-color: #1a1a1a;
     color: #ffffff;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
     margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    overflow: hidden; /* Prevents unwanted scrollbars */
 }
 
+/* The parent container uses Flexbox to split the screen side-by-side */
 .arcade-container {
-    text-align: center;
-    background: #2d2d2d;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    display: flex;
+    width: 100%;
+    height: 100%;
 }
 
-/* Screen Styling */
-.screen-wrapper {
-    background: #000;
-    padding: 10px;
+/* LEFT PANEL: The Sidebar for controls and files */
+.loader-section, .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Styling the sidebar itself */
+h1 {
+    font-size: 22px;
+    margin-top: 0;
+    color: #00adb5;
+}
+
+.loader-section {
+    background: #393e46;
+    padding: 15px;
     border-radius: 8px;
-    display: inline-block;
-    margin: 20px 0;
-    border: 4px solid #3e3e3e;
+    margin-bottom: 20px;
 }
 
-#emulator-screen {
-    background-color: #111;
-    display: block;
-    /* This prevents the browser from blurring retro pixels */
-    image-rendering: pixelated; 
-    max-width: 100%;
-    height: auto;
+#rom-name {
+    margin: 5px 0 0 0;
+    font-size: 14px;
+    word-break: break-all;
+    color: #eeeeee;
 }
 
 /* Custom Upload Button */
@@ -42,13 +51,14 @@ input[type="file"] {
 }
 
 .custom-file-upload {
-    display: inline-block;
-    padding: 10px 20px;
+    display: block;
+    padding: 12px;
     background: #00adb5;
     color: #fff;
     border-radius: 5px;
     cursor: pointer;
     font-weight: bold;
+    text-align: center;
     transition: background 0.2s;
 }
 
@@ -56,35 +66,62 @@ input[type="file"] {
     background: #007a80;
 }
 
-/* Controls */
+/* Sidebar Action Buttons */
 .controls button {
     background: #393e46;
     color: #fff;
-    border: none;
-    padding: 10px 20px;
-    margin: 0 5px;
+    border: 1px solid #555;
+    padding: 12px;
     border-radius: 5px;
     cursor: pointer;
     font-size: 16px;
+    font-weight: bold;
+    text-align: left;
+    transition: all 0.2s;
 }
 
 .controls button:disabled {
-    opacity: 0.5;
+    opacity: 0.3;
     cursor: not-allowed;
 }
 
 .controls button:not(:disabled):hover {
     background: #4f5b66;
+    border-color: #00adb5;
 }
 
-/* Modal background overlay */
+/* RIGHT PANEL: The Main Gameplay Screen Area */
+.screen-wrapper {
+    flex: 1; /* This forces the screen area to fill all remaining space */
+    background: #000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* The game canvas now dynamically grows while keeping its crisp pixel ratio */
+#emulator-screen {
+    background-color: #111;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    aspect-ratio: 256 / 240; /* Keeps the exact retro NES shape */
+    image-rendering: pixelated; 
+    box-shadow: 0 0 30px rgba(0,0,0,0.8);
+}
+
+/* ==========================================
+   MODAL POPUP STYLING (Remains Centered)
+   ========================================== */
 .modal {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -92,10 +129,9 @@ input[type="file"] {
 }
 
 .modal.hidden {
-    display: none; /* Hides the modal by default */
+    display: none;
 }
 
-/* Modal box content */
 .modal-content {
     background: #2d2d2d;
     padding: 25px;
@@ -103,10 +139,9 @@ input[type="file"] {
     border: 2px solid #00adb5;
     text-align: center;
     max-width: 400px;
-    width: 100%;
+    width: 90%;
 }
 
-/* Row styling for each controller button configuration */
 .map-row {
     display: flex;
     justify-content: space-between;
