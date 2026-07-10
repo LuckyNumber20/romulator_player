@@ -1,4 +1,6 @@
-// Grab HTML elements
+// ==========================================
+// 1. HTML ELEMENT CONNECTIONS & STATE
+// ==========================================
 const romUpload = document.getElementById('rom-upload');
 const romName = document.getElementById('rom-name');
 const btnPlay = document.getElementById('btn-play');
@@ -8,8 +10,12 @@ const canvas = document.getElementById('emulator-screen');
 const ctx = canvas.getContext('2d');
 
 let romBuffer = null;
+let isPlaying = false;
+let animationFrameId = null;
 
-// Handle file uploading
+// ==========================================
+// 2. ROM FILE LOADER LOGIC
+// ==========================================
 romUpload.addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -19,10 +25,10 @@ romUpload.addEventListener('change', (event) => {
     // Read the file as binary data
     const reader = new FileReader();
     reader.onload = function(e) {
-        romBuffer = e.target.result; // This is the raw ROM binary
-        console.log("ROM loaded successfully into memory. Byte length:", romBuffer.byteLength);
+        romBuffer = e.target.result; // Raw binary buffer
+        console.log("ROM loaded successfully. Byte length:", romBuffer.byteLength);
         
-        // Enable UI buttons since a game is loaded
+        // Unlock user interface buttons now that a game is loaded
         btnPlay.disabled = false;
         btnPause.disabled = false;
         btnReset.disabled = false;
@@ -31,24 +37,12 @@ romUpload.addEventListener('change', (event) => {
     reader.readAsArrayBuffer(file);
 });
 
-// Button Click Event Listeners
-btnPlay.addEventListener('click', () => {
-    console.log("Starting execution... (We will hook WebAssembly here next!)");
-});
-
-btnPause.addEventListener('click', () => {
-    console.log("Game paused.");
-});
-
-btnReset.addEventListener('click', () => {
-    console.log("Resetting system state.");
-});
-
-// --- DYNAMIC CONTROLLER MAPPING LOGIC ---
-
+// ==========================================
+// 3. DYNAMIC CONTROLLER MAPPING LOGIC
+// ==========================================
 const controllerState = { Up: 0, Down: 0, Left: 0, Right: 0, A: 0, B: 0, Start: 0, Select: 0 };
 
-// We use 'let' so we can modify it when remapping keys dynamically
+// Mapped keyboard keys (can be changed dynamically by user)
 let keyMap = {
     'ArrowUp': 'Up',
     'ArrowDown': 'Down',
@@ -60,24 +54,22 @@ let keyMap = {
     'Shift': 'Select'
 };
 
-// UI Elements for mapping
+// UI Elements for key mapping interface
 const btnMap = document.getElementById('btn-map');
 const mappingModal = document.getElementById('mapping-modal');
 const btnCloseModal = document.getElementById('btn-close-modal');
 const mappingList = document.getElementById('mapping-list');
 
-let activeRemapButton = null; // Tracks which arcade button we are currently remapping
+let activeRemapButton = null; // Tracks which arcade button is currently listening for a rebind
 
-// Open and build the mapping list
+// Open modal and render current configurations
 btnMap.addEventListener('click', () => {
-    mappingList.innerHTML = ''; // Clear previous entries
+    mappingList.innerHTML = ''; 
     
-    // Create a row for each button in our controllerState
     Object.keys(controllerState).forEach(gameButton => {
         const row = document.createElement('div');
         row.className = 'map-row';
         
-        // Find which keyboard key currently triggers this action
         const currentKey = Object.keys(keyMap).find(key => keyMap[key] === gameButton) || 'None';
         
         row.innerHTML = `
@@ -91,66 +83,147 @@ btnMap.addEventListener('click', () => {
     mappingModal.classList.remove('hidden');
 });
 
-// Handle clicking an assignment button inside the modal
+// Handle choosing a layout button inside the popup modal
 mappingList.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') {
-        // Reset any other button that was listening
         document.querySelectorAll('.map-row button').forEach(b => b.classList.remove('listening'));
-        
         activeRemapButton = e.target;
         activeRemapButton.classList.add('listening');
         activeRemapButton.textContent = 'Press any key...';
     }
 });
 
-// Close modal
+// Save and close configuration modal
 btnCloseModal.addEventListener('click', () => {
     mappingModal.classList.add('hidden');
     activeRemapButton = null;
 });
 
-// Listen for keyboard buttons pressed down
+// ==========================================
+// 4. KEYBOARD INTERCEPTORS (GAMEPLAY & REMAPPING)
+// ==========================================
 window.addEventListener('keydown', (event) => {
-    // IF we are actively listening to remap a key:
+    // Check if user is actively setting up a custom shortcut key
     if (activeRemapButton) {
         event.preventDefault();
         const gameButtonToAssign = activeRemapButton.getAttribute('data-button');
         const newPressedKey = event.key;
         
-        // Remove old key bindings that pointed to this game button
+        // Remove old structural entries mapping to this virtual execution action
         Object.keys(keyMap).forEach(key => {
             if (keyMap[key] === gameButtonToAssign) delete keyMap[key];
         });
         
-        // Map the new key to our game action
+        // Bind key layout
         keyMap[newPressedKey] = gameButtonToAssign;
-        // Also support uppercase for letters automatically
         if(newPressedKey.length === 1) {
             keyMap[newPressedKey.toUpperCase()] = gameButtonToAssign;
         }
         
-        // Update UI button text
         activeRemapButton.textContent = newPressedKey.replace('Arrow', '');
         activeRemapButton.classList.remove('listening');
-        activeRemapButton.blur(); // Unfocus button
+        activeRemapButton.blur();
         activeRemapButton = null;
         return;
     }
 
-    // NORMAL GAMEPLAY: Track active button presses
+    // Capture standard in-game inputs
     if (keyMap[event.key] !== undefined) {
         const button = keyMap[event.key];
         controllerState[button] = 1;
         event.preventDefault(); 
-        console.log(`Pressed: ${button}`, controllerState);
     }
 });
 
-// Listen for keyboard buttons released
 window.addEventListener('keyup', (event) => {
     if (keyMap[event.key] !== undefined) {
         const button = keyMap[event.key];
         controllerState[button] = 0;
-        console.log(`Released: ${button}`);
+    }
+});
+
+// ==========================================
+// 5. NES EMULATOR ENGINE INTEGRATION (JSNES)
+// ==========================================
+let nes = new jsnes.NES({
+    onFrame: function(buffer) {
+        const imageData = ctx.getImageData(0, 0, 256, 240);
+        const data = imageData.data;
+
+        // Transform native NES video system output into browser engine graphics data (RGBA format)
+        for (let i = 0; i < 256 * 240; i++) {
+            const pixel = buffer[i];
+            const r = (pixel >> 16) & 0xff;
+            const g = (pixel >> 8) & 0xff;
+            const b = pixel & 0xff;
+            
+            const index = i * 4;
+            data[index]     = r;   
+            data[index + 1] = g;   
+            data[index + 2] = b;   
+            data[index + 3] = 0xff; // Opacity 100%
+        }
+        ctx.putImageData(imageData, 0, 0);
+    },
+    onAudioSample: function(left, right) {
+        // Audio hook interface room left blank for scaling upgrades
+    }
+});
+
+// Heartbeat execution loop driving the canvas context animations
+function emulateFrame() {
+    if (!isPlaying) return;
+
+    // Direct registration link maps control arrays right into the runtime memory buffer engine
+    nes.controllers[1].state[jsnes.Controller.BUTTON_UP] = controllerState.Up;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_DOWN] = controllerState.Down;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_LEFT] = controllerState.Left;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_RIGHT] = controllerState.Right;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_A] = controllerState.A;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_B] = controllerState.B;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_START] = controllerState.Start;
+    nes.controllers[1].state[jsnes.Controller.BUTTON_SELECT] = controllerState.Select;
+
+    // Advance framework by 1 frame slice
+    nes.frame();
+
+    // Loop cycle request hook
+    animationFrameId = requestAnimationFrame(emulateFrame);
+}
+
+// ==========================================
+// 6. ACTION CONTROLS BUTTON REGISTRATION
+// ==========================================
+btnPlay.addEventListener('click', () => {
+    if (!romBuffer) return;
+
+    if (!isPlaying) {
+        isPlaying = true;
+        
+        // Convert binary object array to raw string chunking patterns if starting clean
+        if (!nes.rom) {
+            const bytes = new Uint8Array(romBuffer);
+            let romString = "";
+            for (let i = 0; i < bytes.length; i++) {
+                romString += String.fromCharCode(bytes[i]);
+            }
+            nes.loadROM(romString);
+        }
+
+        emulateFrame();
+        console.log("NES Emulation engine running.");
+    }
+});
+
+btnPause.addEventListener('click', () => {
+    isPlaying = false;
+    cancelAnimationFrame(animationFrameId);
+    console.log("Emulation paused.");
+});
+
+btnReset.addEventListener('click', () => {
+    if (nes.rom) {
+        nes.reloadROM();
+        console.log("NES System state refreshed.");
     }
 });
