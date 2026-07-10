@@ -1,4 +1,5 @@
 /* Reset margins and make the body take up the full screen height */
+/* Reset margins and make the body take up the full screen height */
 body {
     background-color: #1a1a1a;
     color: #ffffff;
@@ -22,6 +23,16 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
+}
+
+/* Add a dedicated sidebar container rule to ensure fixed space for text/buttons */
+.arcade-container > div:first-child {
+    width: 280px;
+    min-width: 280px;
+    background: #2d2d2d;
+    padding: 25px;
+    border-right: 2px solid #3e3e3e;
+    box-shadow: 5px 0 15px rgba(0,0,0,0.3);
 }
 
 /* Styling the sidebar itself */
@@ -103,17 +114,21 @@ input[type="file"] {
 /* The game canvas now dynamically grows while keeping its crisp pixel ratio */
 #emulator-screen {
     background-color: #111;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
+    
+    /* FORCE the canvas to fill the maximum possible space in its wrapper */
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100vw;
+    max-height: 100vh;
+    
+    object-fit: contain; /* Centers the game screen nicely within the space */
     aspect-ratio: 256 / 240; /* Keeps the exact retro NES shape */
     image-rendering: pixelated; 
     box-shadow: 0 0 30px rgba(0,0,0,0.8);
 }
 
 /* ==========================================
-   MODAL POPUP STYLING (Remains Centered)
+    MODAL POPUP STYLING (Remains Centered)
    ========================================== */
 .modal {
     position: fixed;
