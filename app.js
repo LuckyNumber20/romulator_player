@@ -8,6 +8,9 @@ const btnPause = document.getElementById('btn-pause');
 const btnReset = document.getElementById('btn-reset');
 const canvas = document.getElementById('emulator-screen');
 const ctx = canvas.getContext('2d');
+const btnSave = document.getElementById('btn-save');
+const btnLoad = document.getElementById('btn-load');
+const stateUpload = document.getElementById('state-upload');
 
 let romBuffer = null;
 let isPlaying = false;
@@ -32,6 +35,8 @@ romUpload.addEventListener('change', (event) => {
         btnPlay.disabled = false;
         btnPause.disabled = false;
         btnReset.disabled = false;
+        btnSave.disabled = false;
+        btnLoad.disabled = false;
     };
     
     reader.readAsArrayBuffer(file);
@@ -226,4 +231,67 @@ btnReset.addEventListener('click', () => {
         nes.reloadROM();
         console.log("NES System state refreshed.");
     }
+});
+// ==========================================
+// 7. SAVE & LOAD STATE MANAGEMENT
+// ==========================================
+
+// Handle Exporting a Save State File (.sav)
+btnSave.addEventListener('click', () => {
+    if (!nes.rom) return;
+
+    // 1. Get the current mathematical state of the NES emulator as a JSON object
+    const stateObject = nes.toJSON();
+    const stateString = JSON.stringify(stateObject);
+
+    // 2. Convert the string into a downloadable blob file
+    const blob = new Blob([stateString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    // 3. Create a temporary invisible link to trigger a browser file download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${romName.textContent.replace('Loaded: ', '').split('.')[0]}_save.sav`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up memory
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log("Save state exported successfully!");
+});
+
+// Trigger the hidden file input when clicking the visible "Load State" button
+btnLoad.addEventListener('click', () => {
+    stateUpload.click();
+});
+
+// Handle Importing a Save State File
+stateUpload.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            // 1. Parse the text file back into a JSON structure
+            const stateObject = JSON.parse(e.target.result);
+            
+            // 2. Inject the loaded memory structure back into the living NES engine
+            nes.fromJSON(stateObject);
+            console.log("Save state injected successfully! Resuming progress...");
+            
+            // 3. If paused, automatically resume execution
+            if (!isPlaying) {
+                btnPlay.click();
+            }
+        } catch (err) {
+            alert("Failed to load save state. Make sure it's the correct file for this game!");
+            console.error(err);
+        }
+    };
+    reader.readAsText(file);
+    
+    // Clear value so the same file can be uploaded again if needed
+    stateUpload.value = '';
 });
