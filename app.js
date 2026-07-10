@@ -124,24 +124,26 @@ romUpload.addEventListener('change', async (event) => {
             if (window.WasmBoy) {
                 WasmBoy.config({ autostart: false, isAudioEnabled: true, enableDynamicSpeed: true });
             }
-         } else if (extension === 'gba') {
+        } else if (extension === 'gba') {
             currentSystem = 'GBA';
             canvas.width = 240;
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Using a highly stable production-ready mirror for the GBA engine core
-            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/Cartridge.js');
-            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/GBA.js');
+            // Replaced with a unified, stable standalone build link
+            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/views/html/main.js');
             
             if (!gba && window.IodineGBA) {
                 gba = new IodineGBA();
-                // Connect the engine to your layout's canvas context
                 gba.setCanvas(canvas);
             }
+        } else {
+            alert("Unsupported console file type!");
+            romName.textContent = "No ROM loaded";
+            return;
         }
 
-        // Load file into cache buffer arrays
+        // Read the uploaded game file data
         const reader = new FileReader();
         reader.onload = function(e) {
             romBuffer = e.target.result;
@@ -150,14 +152,15 @@ romUpload.addEventListener('change', async (event) => {
             btnPlay.disabled = false;
             btnPause.disabled = false;
             btnReset.disabled = false;
-            btnSave.disabled = (currentSystem === 'GBA'); // GBA.js handles native battery saves directly
+            btnSave.disabled = (currentSystem === 'GBA'); 
             btnLoad.disabled = (currentSystem === 'GBA');
         };
         reader.readAsArrayBuffer(file);
 
     } catch (error) {
-        alert("Failed to load the emulator core engine.");
-        console.error(error);
+        // ON-SCREEN REPORTER: This alert will pop up and tell us the exact URL or file causing the break
+        alert(`EMULATOR ENGINE ERROR:\n${error.message}\n\nPlease copy this message and tell me what it says!`);
+        romName.textContent = "Failed to load core.";
     }
 });
 
