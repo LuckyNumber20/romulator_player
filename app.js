@@ -26,55 +26,46 @@ let scriptProcessor = null;
 let audioBufferQueue = [];
 
 function initAudio() {
-    if (audioCtx) return; // Already running
+    if (audioCtx) return; // Audio environment is already up and running
     
-    // Create the main browser audio environment
+    // 1. Create a standard browser audio rendering context
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     
-    // Create a script processor node to stream raw emulator sound samples directly to speakers
-    // 2048 buffer size, 0 input channels, 2 output channels (Stereo)
+    // 2. Create a script processor bridge (2048 buffer window size, Stereo layout output)
     scriptProcessor = audioCtx.createScriptProcessor(2048, 0, 2);
     
+    // 3. This event constantly asks our queue for sound frames to send to the speakers
     scriptProcessor.onaudioprocess = function(e) {
         const outputLeft = e.outputBuffer.getChannelData(0);
         const outputRight = e.outputBuffer.getChannelData(1);
         
-        // Fill the audio channels with samples from our emulator queue
         for (let i = 0; i < 2048; i++) {
             if (audioBufferQueue.length > 0) {
                 const sample = audioBufferQueue.shift();
                 outputLeft[i] = sample.left;
                 outputRight[i] = sample.right;
             } else {
-                // If queue is empty, play silence instead of cracking/popping noises
-                outputLeft[i] = 0;
-                outputRight[i] = 0;
+                outputLeft[i] = 0; // Play pure silence if the engine lags, preventing pops
             }
         }
     };
     
-    // Connect the audio processor to your device's speakers
+    // 4. Hook the processor to your computer's actual speaker destination
     scriptProcessor.connect(audioCtx.destination);
+    console.log("Audio pipeline connected to speakers.");
 }
 
-// Queue audio samples coming out of the emulator engines
+// Catches raw sound values coming from the NES engine frame loops
 function playAudioSample(left, right) {
     if (!audioCtx || !isPlaying) return;
     
-    // Prevent the audio queue from growing infinitely and causing huge lag
-    if (audioBufferQueue.length > 8192) {
-        audioBufferQueue = []; // Clear overflow
+    // Guardrail against audio desync latency lag spikes
+    if (audioBufferQueue.length > 4096) {
+        audioBufferQueue = []; 
     }
     
     audioBufferQueue.push({ left: left, right: right });
 }
-
-// Queue audio samples to prevent popping sounds
-function playAudioSample(left, right) {
-    if (!audioCtx || !isPlaying) return;
-    // Basic structural audio node connection can be wired to buffer arrays here
-}
-
 // ==========================================
 // 3. ROM FILE LOADER & SYSTEM DETECTOR
 // ==========================================
@@ -179,6 +170,8 @@ window.addEventListener('keyup', (event) => { if (keyMap[event.key] !== undefine
 // 5. EMULATION ENGINES INTERFACES (NES & GAME BOY)
 // ==========================================
 let nes = new jsnes.NES({
+    sampleRate: 44100,  // Forces NES to generate samples at exactly our browser's rate
+    emulateSound: true, // ENABLES the NES internal audio processing channels
     onFrame: function(buffer) {
         const imageData = ctx.getImageData(0, 0, 256, 240);
         const data = imageData.data;
@@ -192,12 +185,16 @@ let nes = new jsnes.NES({
         }
         ctx.putImageData(imageData, 0, 0);
     },
-    onAudioSample: playAudioSample
+    onAudioSample: playAudioSample // Forwards NES audio right into our player queue
 });
 
-// Initialize dynamic Game Boy system hook interface
+// Configure the Game Boy system core settings
 if (window.WasmBoy) {
-    WasmBoy.config({ autostart: false, audioBatchSize: 512 });
+    WasmBoy.config({ 
+        autostart: false, 
+        isAudioEnabled: true, // Forces Game Boy core audio module to unlock
+        enableDynamicSpeed: true 
+    });
 }
 
 function emulateFrame() {
