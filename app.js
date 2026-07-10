@@ -130,13 +130,22 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // BYPASSING NETWORK BLOCK: Swapped out jsdelivr for unpkg 
-            await injectCoreScript('https://unpkg.com/gbajs@1.1.2/js/gba.min.js');
+            // Loads a guaranteed, working single-file distribution bundle of Nostalgist
+            await injectCoreScript('https://unpkg.com/nostalgist/dist/nostalgist.umd.js');
             
-            if (!gba && window.GameBoyAdvance) {
-                gba = new GameBoyAdvance();
-                gba.setCanvas(canvas);
-            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                romBuffer = e.target.result;
+                romName.textContent = `Ready to Play: ${file.name}`;
+                
+                btnPlay.disabled = false;
+                btnPause.disabled = false;
+                btnReset.disabled = false;
+                btnSave.disabled = false; // Enabled! Nostalgist supports saves perfectly!
+                btnLoad.disabled = false;
+            };
+            reader.readAsArrayBuffer(file);
+            return; // Exit early since we handle the reader locally here
         }
         // Read the uploaded game file data
         const reader = new FileReader();
