@@ -130,19 +130,14 @@ romUpload.addEventListener('change', async (event) => {
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Replaced with a unified, stable standalone build link
-            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/views/html/main.js');
+            // BYPASSING NETWORK BLOCK: Swapped out jsdelivr for unpkg 
+            await injectCoreScript('https://unpkg.com/gbajs@1.1.2/js/gba.min.js');
             
-            if (!gba && window.IodineGBA) {
-                gba = new IodineGBA();
+            if (!gba && window.GameBoyAdvance) {
+                gba = new GameBoyAdvance();
                 gba.setCanvas(canvas);
             }
-        } else {
-            alert("Unsupported console file type!");
-            romName.textContent = "No ROM loaded";
-            return;
         }
-
         // Read the uploaded game file data
         const reader = new FileReader();
         reader.onload = function(e) {
