@@ -301,16 +301,30 @@ btnPlay.addEventListener('click', async () => {
             WasmBoy.setCanvas(canvas);
             emulateFrame();
         } else if (currentSystem === 'GBA' && window.Nostalgist) {
-            if (!gba) {
-                const romBlob = new Blob([romBuffer]);
-                // Launch the industry-standard mGBA engine directly into your canvas
-                gba = await Nostalgist.launch({
-                    core: 'mgba',
-                    rom: romBlob,
-                    element: canvas
-                });
-            } else {
-                await gba.resume();
+            try {
+                if (!gba) {
+                    romName.textContent = "Booting up 32-bit mGBA Core...";
+                    const romBlob = new Blob([romBuffer]);
+                    
+                    gba = await Nostalgist.launch({
+                        core: 'mgba',
+                        rom: romBlob,
+                        element: canvas,
+                        // FORCE UNPKG: This tells Nostalgist to completely bypass jsdelivr 
+                        // for its internal background engine and webassembly assets!
+                        resolveCoreSource(core, ext) {
+                            return `https://unpkg.com/@nostalgist/cores/${core}_libretro.${ext}`;
+                        }
+                    });
+                    
+                    romName.textContent = "GBA Engine Active!";
+                } else {
+                    await gba.resume();
+                }
+            } catch (err) {
+                isPlaying = false;
+                alert(`🚨 GBA ENGINE FAILURE:\n${err.message}\n\nYour device or network configuration might be preventing WebAssembly applications from compiling.`);
+                romName.textContent = "Engine crashed.";
             }
         }
         console.log(`${currentSystem} core active.`);
