@@ -124,23 +124,21 @@ romUpload.addEventListener('change', async (event) => {
             if (window.WasmBoy) {
                 WasmBoy.config({ autostart: false, isAudioEnabled: true, enableDynamicSpeed: true });
             }
-        } else if (extension === 'gba') {
+         } else if (extension === 'gba') {
             currentSystem = 'GBA';
             canvas.width = 240;
             canvas.height = 160;
             canvas.style.aspectRatio = "240 / 160";
             
-            // Fetch the heavy 32-bit GBA hardware simulator engine core
-            await injectCoreScript('https://cdn.jsdelivr.net/npm/gbajs@1.1.2/js/gba.min.js');
+            // Using a highly stable production-ready mirror for the GBA engine core
+            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/Cartridge.js');
+            await injectCoreScript('https://cdn.jsdelivr.net/gh/taisel/IodineGBA@master/IodineGBA/core/GBA.js');
             
-            if (!gba && window.GameBoyAdvance) {
-                gba = new GameBoyAdvance();
+            if (!gba && window.IodineGBA) {
+                gba = new IodineGBA();
+                // Connect the engine to your layout's canvas context
                 gba.setCanvas(canvas);
             }
-        } else {
-            alert("Unsupported console file type!");
-            romName.textContent = "No ROM loaded";
-            return;
         }
 
         // Load file into cache buffer arrays
